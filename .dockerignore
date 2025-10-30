@@ -1,0 +1,39 @@
+# Filename: .dockerignore
+
+# Docker
+Dockerfile.api
+Dockerfile.ui
+docker-compose.yml
+.dockerignore
+
+.git
+.gitignore
+README.md
+
+# Python venv
+.venv
+venv/
+lib/
+include/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Local data files
+*.csv
+*.db
+*.sqlite3
+
+# Env files (we use 'env_file' in compose)
+.env
+
+# IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+
+# The production container doesn't need to run tests
+test_core.py
+test_agents.py
+generate_data.py

@@ -1,0 +1,44 @@
+# Filename: docker-compose.yml
+version: '3.8'
+
+services:
+  # --- The FastAPI Backend API ---
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: always
+    ports:
+      - "8000:8000" # Map host port 8000 to container port 8000
+    env_file:
+      - .env # This securely passes the GEMINI_API_KEY to the container
+    volumes:
+      # Mounts the local code into the container for live-reloading
+      # Good for development, can be removed for production
+      - .:/app 
+    networks:
+      - ab_network
+
+  # --- The Streamlit Frontend UI ---
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    restart: always
+    ports:
+      - "8501:8501" # Map host port 8501 to container port 8501
+    volumes:
+      - .:/app
+    networks:
+      - ab_network
+    depends_on:
+      - api # Tells Docker to start the API *before* starting the UI
+    environment:
+      # This is the magic! It tells the UI to find the API at "http://api:8000"
+      - BACKEND_URL=http://api:8000 
+
+# --- Shared Network ---
+# This creates a private network so the containers can find each other
+networks:
+  ab_network:
+    driver: bridge

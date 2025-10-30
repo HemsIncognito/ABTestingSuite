@@ -1,0 +1,22 @@
+# Filename: Dockerfile.api
+
+# Start from a slim Python base image
+FROM python:3.11-slim
+
+# Set the working directory inside the container
+WORKDIR /app
+
+# Copy the requirements file first and install dependencies
+# This layer is cached, so it only re-runs if requirements.txt changes
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy all our application code into the container
+COPY . .
+
+# Expose the port the API will run on
+EXPOSE 8000
+
+# The command to run the app in production using Gunicorn
+# This runs 4 "worker" processes
+CMD ["gunicorn", "-k", "uvicorn.workers.UvicornWorker", "-w", "4", "-b", "0.0.0.0:8000", "main:app"]
