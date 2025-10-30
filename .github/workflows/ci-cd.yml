@@ -1,0 +1,116 @@
+# Filename: .github/workflows/ci-cd.yml
+
+name: A/B Suite CI/CD Pipeline
+
+# --- Triggers ---
+# This workflow runs on:
+# 1. A push (merge) to the 'main' branch
+# 2. A pull request that is targeting the 'main' branch (for testing)
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # --- Job 1: Continuous Integration (CI) ---
+  # This job runs our Python tests
+  test:
+    name: Run Python Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the repository code
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # 2. Set up a Python 3.11 environment
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # 3. Install all the Python libraries
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4. Run our two test scripts
+      # We must provide the API key as a secret for the agent test
+      - name: Run tests
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          python test_core.py
+          python test_agents.py
+
+  # --- Job 2: Continuous Delivery (CD) ---
+  # This job builds and publishes our Docker images to GHCR
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    
+    # This job will *only* run if the 'test' job above succeeds
+    needs: test
+    
+    # This job will *only* run on a real push to 'main',
+    # not on pull requests.
+    if: github.event_name == 'push'
+
+    # We must give the job special permissions to write to GHCR
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # 1. Check out the repository code
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # 2. Log in to the GitHub Container Registry (GHCR)
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 3. Prepare the Docker image tags (e.g., ghcr.io/your-name/ab-suite/api:latest)
+      # This step creates two environment variables: TAG_API and TAG_UI
+      # It also converts all letters to lowercase, which GHCR requires.
+      - name: Prepare Image Tags
+        id: prep
+        run: |
+          REPO_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          REPO_NAME=$(echo "${{ github.event.repository.name }}" | tr '[:upper:]' '[:lower:]')
+          echo "TAG_API=ghcr.io/$REPO_OWNER/$REPO_NAME/api:latest" >> $GITHUB_ENV
+          echo "TAG_UI=ghcr.io/$REPO_OWNER/$REPO_NAME/ui:latest" >> $GITHUB_ENV
+
+      # 4. Build and push the API image
+      # (Uses cache to speed up future builds)
+      - name: Build and Push API Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.api
+          push: true
+          tags: ${{ env.TAG_API }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 5. Build and push the UI image
+      - name: Build and Push UI Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.ui
+          push: true
+          tags: ${{ env.TAG_UI }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 6. Log out from GHCR
+      - name: Log out from GHCR
+        if: always()
+        run: docker logout ghcr.io
